@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Telegram Speeltuin</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{
+  --bg: var(--tg-theme-bg-color, #17212b);
+  --text: var(--tg-theme-text-color, #f5f5f5);
+  --hint: var(--tg-theme-hint-color, #8a9aa9);
+  --link: var(--tg-theme-link-color, #6ab3f3);
+  --btn: var(--tg-theme-button-color, #5288c1);
+  --btn-text: var(--tg-theme-button-text-color, #ffffff);
+  --card: var(--tg-theme-secondary-bg-color, #232e3c);
+  --accent: var(--tg-theme-accent-text-color, #6ab3f3);
+  --danger: var(--tg-theme-destructive-text-color, #ec3942);
+  --ok: #3fb950;
+  --top: calc(var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px));
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{background:var(--bg)}
+body{margin:0;color:var(--text);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  padding:calc(16px + var(--top)) 16px calc(32px + env(safe-area-inset-bottom));}
+h1{font-size:24px;margin:4px 0 2px}
+h2{font-size:16px;margin:0 0 4px}
+p.hint,.hint{color:var(--hint);font-size:13px;margin:0 0 10px}
+.card{background:var(--card);border-radius:14px;padding:14px;margin:12px 0}
+.row{display:flex;flex-wrap:wrap;gap:8px}
+button{appearance:none;border:0;border-radius:10px;padding:10px 12px;font:inherit;font-weight:600;
+  background:var(--btn);color:var(--btn-text);cursor:pointer;flex:1 1 auto;min-width:0}
+button.ghost{background:transparent;color:var(--link);border:1px solid color-mix(in srgb,var(--link) 40%,transparent)}
+button:disabled{opacity:.35;cursor:not-allowed}
+input{width:100%;padding:10px 12px;border-radius:10px;border:1px solid color-mix(in srgb,var(--hint) 40%,transparent);
+  background:var(--bg);color:var(--text);font:inherit;margin-bottom:8px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;font-size:13px}
+.kv span:nth-child(odd){color:var(--hint)}
+code{font:12px ui-monospace,Menlo,monospace;word-break:break-all;color:var(--hint)}
+.banner{background:color-mix(in srgb,var(--danger) 18%,transparent);border-radius:12px;padding:12px;font-size:14px;display:none}
+#toast{position:fixed;left:16px;right:16px;top:calc(12px + var(--top));background:var(--text);color:var(--bg);
+  padding:10px 14px;border-radius:12px;font-weight:600;font-size:14px;opacity:0;transform:translateY(-10px);
+  transition:.25s;pointer-events:none;z-index:9;text-align:center}
+#toast.show{opacity:1;transform:none}
+
+/* Quiz */
+.quiz-top{display:flex;justify-content:space-between;font-weight:700;margin-bottom:8px}
+.question{font-size:34px;font-weight:800;text-align:center;margin:10px 0 14px;letter-spacing:1px}
+.answers{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.answers button{font-size:22px;padding:16px 0}
+.bar{height:6px;background:color-mix(in srgb,var(--hint) 25%,transparent);border-radius:3px;overflow:hidden;margin-bottom:10px}
+.bar i{display:block;height:100%;width:100%;background:var(--accent);transition:width .2s linear}
+.flash-ok{animation:ok .35s}
+.shake{animation:shake .35s}
+@keyframes ok{0%{background:var(--ok)}100%{}}
+@keyframes shake{25%{transform:translateX(-6px)}50%{transform:translateX(6px)}75%{transform:translateX(-3px)}}
+
+/* Kantelspel */
+#arena{position:relative;height:240px;border-radius:12px;background:var(--bg);overflow:hidden;margin-bottom:10px;
+  border:1px solid color-mix(in srgb,var(--hint) 25%,transparent)}
+#ball,#target{position:absolute;border-radius:50%;left:0;top:0}
+#ball{width:28px;height:28px;background:var(--btn);box-shadow:0 2px 8px rgba(0,0,0,.35)}
+#target{width:20px;height:20px;background:#f5b400;box-shadow:0 0 12px #f5b400}
+#tiltScore{position:absolute;right:10px;top:8px;font-weight:800;color:var(--hint)}
+</style>
+</head>
+<body>
+
+<div id="toast"></div>
+
+<div class="banner" id="notg">Je opent dit buiten Telegram. Het rekenspel werkt, maar de Telegram-functies zijn uitgeschakeld. Open de pagina via je bot.</div>
+
+<h1 id="hello">Hoi!</h1>
+<p class="hint">Telegram Mini App-speeltuin. Tik overal op en kijk wat er gebeurt.</p>
+
+<div class="card">
+  <h2>👤 Wie ben jij?</h2>
+  <p class="hint">Dit geeft Telegram mee zonder dat je inlogt.</p>
+  <div class="kv" id="info"></div>
+</div>
+
+<!-- Rekenrace -->
+<div class="card" id="quizCard">
+  <h2>🧮 Rekenrace (studiehulp)</h2>
+  <p class="hint">30 seconden, zoveel mogelijk sommen. Je record wordt in Telegram Cloud bewaard.</p>
+  <div id="quizIdle">
+    <div class="kv" style="margin-bottom:10px"><span>Record</span><span id="best">–</span></div>
+    <button id="quizStart">Start</button>
+  </div>
+  <div id="quizRun" hidden>
+    <div class="quiz-top"><span>⏱ <b id="qTime">30</b>s</span><span>⭐ <b id="qScore">0</b></span></div>
+    <div class="bar"><i id="qBar"></i></div>
+    <div class="question" id="qText"></div>
+    <div class="answers" id="qAnswers"></div>
+  </div>
+</div>
+
+<!-- Kantelspel -->
+<div class="card">
+  <h2>🎯 Kantelspel</h2>
+  <p class="hint">Kantel je telefoon en vang de gele bolletjes. Gebruikt de gyroscoop (alleen op mobiel).</p>
+  <div id="arena"><div id="target"></div><div id="ball"></div><div id="tiltScore">0</div></div>
+  <div class="row">
+    <button id="tiltStart" data-min="8.0">Start</button>
+    <button id="tiltStop" class="ghost" data-min="8.0">Stop</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>📳 Trillen (haptics)</h2>
+  <div class="row" style="margin-bottom:8px">
+    <button data-min="6.1" data-h="impact:light">Licht</button>
+    <button data-min="6.1" data-h="impact:medium">Medium</button>
+    <button data-min="6.1" data-h="impact:heavy">Zwaar</button>
+  </div>
+  <div class="row">
+    <button data-min="6.1" data-h="notify:success" class="ghost">✅</button>
+    <button data-min="6.1" data-h="notify:warning" class="ghost">⚠️</button>
+    <button data-min="6.1" data-h="notify:error" class="ghost">❌</button>
+    <button data-min="6.1" data-h="select" class="ghost">Tik</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>💬 Native popups</h2>
+  <div class="row">
+    <button data-min="6.2" id="pAlert">Alert</button>
+    <button data-min="6.2" id="pConfirm">Bevestig</button>
+    <button data-min="6.2" id="pPopup">Keuze</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>🔘 Telegram-knoppen</h2>
+  <p class="hint">Knoppen die Telegram zelf tekent, buiten je pagina.</p>
+  <div class="row">
+    <button data-min="6.0" id="tMain">MainButton</button>
+    <button data-min="7.10" id="tSecond">SecondaryButton</button>
+    <button data-min="6.1" id="tBack">Terug-knop</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>📷 QR-scanner</h2>
+  <button data-min="6.4" id="qr">Scan een QR-code</button>
+</div>
+
+<div class="card">
+  <h2>☁️ Cloud-opslag</h2>
+  <p class="hint">Opgeslagen per gebruiker bij Telegram, werkt op al je toestellen.</p>
+  <input id="note" placeholder="Typ iets…">
+  <div class="row">
+    <button data-min="6.9" id="cSave">Opslaan</button>
+    <button data-min="6.9" id="cLoad" class="ghost">Ophalen</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>🧪 Toestel &amp; rechten</h2>
+  <div class="row" style="margin-bottom:8px">
+    <button data-min="7.2" id="bio">Face ID / vingerafdruk</button>
+    <button data-min="8.0" id="loc">Locatie</button>
+  </div>
+  <div class="row" style="margin-bottom:8px">
+    <button data-min="6.9" id="contact" class="ghost">Deel telefoonnr.</button>
+    <button data-min="6.9" id="write" class="ghost">Bot mag berichten sturen</button>
+  </div>
+  <div class="row">
+    <button data-min="8.0" id="full" class="ghost">Volledig scherm</button>
+    <button data-min="6.1" id="color" class="ghost">Kleur balk</button>
+    <button data-min="6.2" id="closeConf" class="ghost">Sluitbevestiging</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>🔐 Wat je backend krijgt</h2>
+  <p class="hint">Deze <code>initData</code>-string valideer je op de server met je bot-token. Vertrouw nooit wat de browser zelf zegt.</p>
+  <code id="raw">–</code>
+</div>
+
+<script>
+(() => {
+  const tg = window.Telegram && window.Telegram.WebApp;
+  const inTG = !!(tg && tg.initData);
+  const $ = s => document.querySelector(s);
+  const v = min => inTG && tg.isVersionAtLeast(min);
+
+  /* ---------- helpers ---------- */
+  let toastTimer;
+  function toast(msg){
+    const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+  }
+  function haptic(kind, style){
+    if (!v('6.1')) return;
+    try{
+      if (kind === 'impact') tg.HapticFeedback.impactOccurred(style);
+      else if (kind === 'notify') tg.HapticFeedback.notificationOccurred(style);
+      else tg.HapticFeedback.selectionChanged();
+    }catch(e){}
+  }
+  function say(msg){ v('6.2') ? tg.showAlert(msg) : toast(msg); }
+
+  /* storage: Telegram Cloud indien mogelijk, anders localStorage */
+  function store(key, val, cb){
+    if (v('6.9')) return tg.CloudStorage.setItem(key, String(val), (e) => cb && cb(!e));
+    try{ localStorage.setItem(key, val); cb && cb(true); }catch(e){ cb && cb(false); }
+  }
+  function load(key, cb){
+    if (v('6.9')) return tg.CloudStorage.getItem(key, (e, val) => cb(e ? null : val));
+    try{ cb(localStorage.getItem(key)); }catch(e){ cb(null); }
+  }
+
+  /* ---------- init ---------- */
+  if (inTG){ tg.ready(); tg.expand(); }
+  else $('#notg').style.display = 'block';
+
+  document.querySelectorAll('[data-min]').forEach(b => {
+    if (!v(b.dataset.min)){ b.disabled = true; b.title = 'Vereist Telegram ' + b.dataset.min; }
+  });
+
+  const u = inTG ? tg.initDataUnsafe.user : null;
+  $('#hello').textContent = u ? `Hoi ${u.first_name}! 👋` : 'Hoi! 👋';
+  const info = [
+    ['Naam', u ? [u.first_name, u.last_name].filter(Boolean).join(' ') : '–'],
+    ['Gebruiker', u && u.username ? '@' + u.username : '–'],
+    ['Telegram-ID', u ? u.id : '–'],
+    ['Taal', u ? u.language_code || '–' : '–'],
+    ['Premium', u ? (u.is_premium ? 'ja ⭐' : 'nee') : '–'],
+    ['Platform', inTG ? tg.platform : 'browser'],
+    ['API-versie', inTG ? tg.version : '–'],
+    ['Thema', inTG ? tg.colorScheme : '–'],
+  ];
+  $('#info').innerHTML = info.map(([k, val]) => `<span>${k}</span><span>${String(val).replace(/</g,'&lt;')}</span>`).join('');
+  if (inTG) $('#raw').textContent = tg.initData.length > 160 ? tg.initData.slice(0,160) + '…' : tg.initData;
+
+  /* ---------- haptics ---------- */
+  document.querySelectorAll('[data-h]').forEach(b => b.addEventListener('click', () => {
+    const [kind, style] = b.dataset.h.split(':'); haptic(kind, style);
+  }));
+
+  /* ---------- popups ---------- */
+  $('#pAlert').onclick = () => tg.showAlert('Dit is een native Telegram-alert 👋');
+  $('#pConfirm').onclick = () => tg.showConfirm('Is het niet te laat om nog te programmeren?', ok =>
+    toast(ok ? 'Eerlijk antwoord 😄' : 'Volhouden dan! ☕'));
+  $('#pPopup').onclick = () => tg.showPopup({
+    title: 'Wat drink je?',
+    message: 'Popups kunnen tot 3 eigen knoppen hebben.',
+    buttons: [{id:'koffie', type:'default', text:'☕ Koffie'}, {id:'thee', type:'default', text:'🍵 Thee'}, {id:'niets', type:'destructive', text:'Niets'}]
+  }, id => id && toast('Gekozen: ' + id));
+
+  /* ---------- Telegram-knoppen ---------- */
+  if (inTG){
+    tg.MainButton.onClick(() => {
+      tg.MainButton.showProgress();
+      setTimeout(() => { tg.MainButton.hideProgress(); haptic('notify','success'); say('MainButton werkt! Dit is ideaal voor "Bestellen" of "Opslaan".'); }, 1000);
+    });
+    if (v('7.10')) tg.SecondaryButton.onClick(() => { tg.SecondaryButton.hide(); toast('SecondaryButton verborgen'); });
+    if (v('6.1')) tg.BackButton.onClick(() => { tg.BackButton.hide(); toast('Terug-knop gebruikt'); });
+  }
+  $('#tMain').onclick = () => tg.MainButton.isVisible ? tg.MainButton.hide()
+    : tg.MainButton.setParams({ text: 'Ik ben de MainButton', is_visible: true });
+  $('#tSecond').onclick = () => tg.SecondaryButton.isVisible ? tg.SecondaryButton.hide()
+    : tg.SecondaryButton.setParams({ text: 'Secundair', is_visible: true, position: 'left' });
+  $('#tBack').onclick = () => { tg.BackButton.isVisible ? tg.BackButton.hide() : tg.BackButton.show(); toast('Kijk linksboven'); };
+
+  /* ---------- QR ---------- */
+  $('#qr').onclick = () => tg.showScanQrPopup({ text: 'Richt op een QR-code' }, text => {
+    haptic('notify','success');
+    setTimeout(() => say('Gescand:\n' + text), 300);
+    return true; // sluit de scanner
+  });
+
+  /* ---------- Cloud ---------- */
+  $('#cSave').onclick = () => store('notitie', $('#note').value, ok => { haptic('notify', ok ? 'success':'error'); toast(ok ? 'Opgeslagen in Telegram Cloud' : 'Opslaan mislukt'); });
+  $('#cLoad').onclick = () => load('notitie', val => { $('#note').value = val || ''; toast(val ? 'Opgehaald ☁️' : 'Nog niets opgeslagen'); });
+
+  /* ---------- toestel & rechten ---------- */
+  $('#bio').onclick = () => {
+    const bm = tg.BiometricManager;
+    const run = () => {
+      if (!bm.isBiometricAvailable) return toast('Geen biometrie op dit toestel');
+      const auth = () => bm.authenticate({ reason: 'Test vanuit de speeltuin' }, ok => {
+        haptic('notify', ok ? 'success' : 'error'); toast(ok ? 'Herkend ✅' : 'Niet herkend');
+      });
+      if (!bm.isAccessGranted) bm.requestAccess({ reason: 'Om biometrie te testen' }, g => g ? auth() : toast('Toegang geweigerd'));
+      else auth();
+    };
+    bm.isInited ? run() : bm.init(run);
+  };
+  $('#loc').onclick = () => {
+    const lm = tg.LocationManager;
+    const run = () => {
+      if (!lm.isLocationAvailable) return toast('Locatie niet beschikbaar');
+      lm.getLocation(loc => loc ? say(`📍 ${loc.latitude.toFixed(5)}, ${loc.longitude.toFixed(5)}`) : toast('Geweigerd'));
+    };
+    lm.isInited ? run() : lm.init(run);
+  };
+  $('#contact').onclick = () => tg.requestContact((ok, res) => {
+    const nr = res && res.responseUnsafe && res.responseUnsafe.contact && res.responseUnsafe.contact.phone_number;
+    toast(ok ? 'Gedeeld' + (nr ? ': ' + nr : ' (staat in de bot-chat)') : 'Geweigerd');
+  });
+  $('#write').onclick = () => tg.requestWriteAccess(ok => toast(ok ? 'Bot mag je nu berichten sturen' : 'Geweigerd'));
+  $('#full').onclick = () => tg.isFullscreen ? tg.exitFullscreen() : tg.requestFullscreen();
+  $('#color').onclick = () => {
+    const c = '#' + Math.floor(Math.random()*0xffffff).toString(16).padStart(6,'0');
+    tg.setHeaderColor(c); haptic('select'); toast('Balk: ' + c);
+  };
+  let closeOn = false;
+  $('#closeConf').onclick = () => {
+    closeOn = !closeOn;
+    closeOn ? tg.enableClosingConfirmation() : tg.disableClosingConfirmation();
+    toast(closeOn ? 'Telegram vraagt nu bevestiging bij sluiten' : 'Sluitbevestiging uit');
+  };
+
+  /* ---------- Rekenrace ---------- */
+  const QUIZ_TIME = 30;
+  let qScore = 0, qLeft = 0, qTimer = null, qAnswer = 0, best = 0;
+  load('rekenrace_best', val => { best = parseInt(val || '0', 10) || 0; $('#best').textContent = best || '–'; });
+
+  const rnd = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+  function nextQuestion(){
+    const op = ['+','−','×'][rnd(0, qScore < 5 ? 1 : 2)];
+    let a, b;
+    if (op === '+'){ a = rnd(3, 20 + qScore*3); b = rnd(2, 20 + qScore*2); qAnswer = a + b; }
+    else if (op === '−'){ a = rnd(10, 30 + qScore*3); b = rnd(1, a); qAnswer = a - b; }
+    else { a = rnd(2, 10); b = rnd(2, 10); qAnswer = a * b; }
+    $('#qText').textContent = `${a} ${op} ${b}`;
+    const opts = new Set([qAnswer]);
+    while (opts.size < 4){
+      const d = qAnswer + rnd(-10, 10);
+      if (d >= 0 && d !== qAnswer) opts.add(d);
+    }
+    const box = $('#qAnswers'); box.innerHTML = '';
+    [...opts].sort(() => Math.random() - .5).forEach(n => {
+      const b = document.createElement('button'); b.textContent = n;
+      b.onclick = () => answer(n, b); box.appendChild(b);
+    });
+  }
+  function answer(n, btn){
+    const card = $('#quizCard');
+    if (n === qAnswer){
+      qScore++; $('#qScore').textContent = qScore; haptic('impact','light');
+      card.classList.remove('flash-ok'); void card.offsetWidth; card.classList.add('flash-ok');
+      nextQuestion();
+    } else {
+      haptic('notify','error');
+      btn.disabled = true;
+      card.classList.remove('shake'); void card.offsetWidth; card.classList.add('shake');
+    }
+  }
+  function endQuiz(){
+    clearInterval(qTimer);
+    $('#quizRun').hidden = true; $('#quizIdle').hidden = false;
+    if (inTG && v('6.2')) tg.disableClosingConfirmation();
+    const record = qScore > best;
+    if (record){ best = qScore; $('#best').textContent = best; store('rekenrace_best', best); }
+    haptic('notify', record ? 'success' : 'warning');
+    const msg = record ? `Nieuw record: ${qScore} sommen! 🏆` : `${qScore} sommen. Record blijft ${best}.`;
+    if (v('6.2')) tg.showPopup({ title: 'Tijd om!', message: msg, buttons: [{id:'again', type:'default', text:'Nog eens'}, {type:'close'}] },
+      id => id === 'again' && startQuiz());
+    else toast(msg);
+  }
+  function startQuiz(){
+    qScore = 0; qLeft = QUIZ_TIME;
+    $('#qScore').textContent = 0; $('#qTime').textContent = qLeft; $('#qBar').style.width = '100%';
+    $('#quizIdle').hidden = true; $('#quizRun').hidden = false;
+    if (inTG && v('6.2')) tg.enableClosingConfirmation();
+    nextQuestion(); haptic('impact','medium');
+    clearInterval(qTimer);
+    qTimer = setInterval(() => {
+      qLeft--; $('#qTime').textContent = qLeft; $('#qBar').style.width = (qLeft / QUIZ_TIME * 100) + '%';
+      if (qLeft <= 5 && qLeft > 0) haptic('select');
+      if (qLeft <= 0) endQuiz();
+    }, 1000);
+  }
+  $('#quizStart').onclick = startQuiz;
+
+  /* ---------- Kantelspel ---------- */
+  const arena = $('#arena'), ball = $('#ball'), target = $('#target');
+  const B = 28, T = 20;
+  let tilt = { run:false, x:0, y:0, vx:0, vy:0, tx:0, ty:0, score:0, base:null, beta:0, gamma:0 };
+  function place(el, x, y){ el.style.transform = `translate(${x}px, ${y}px)`; }
+  function newTarget(){
+    tilt.tx = rnd(4, arena.clientWidth - T - 4); tilt.ty = rnd(4, arena.clientHeight - T - 4);
+    place(target, tilt.tx, tilt.ty);
+  }
+  function resetTilt(){
+    tilt.x = (arena.clientWidth - B) / 2; tilt.y = (arena.clientHeight - B) / 2; tilt.vx = tilt.vy = 0;
+    place(ball, tilt.x, tilt.y); newTarget();
+  }
+  resetTilt();
+  function onOrientation(){
+    const d = tg.DeviceOrientation;
+    if (tilt.base === null) tilt.base = d.beta || 0;
+    tilt.beta = (d.beta || 0) - tilt.base; tilt.gamma = d.gamma || 0;
+  }
+  function frame(){
+    if (!tilt.run) return;
+    const W = arena.clientWidth - B, H = arena.clientHeight - B;
+    tilt.vx = (tilt.vx + Math.sin(tilt.gamma) * 1.4) * 0.95;
+    tilt.vy = (tilt.vy + Math.sin(tilt.beta) * 1.4) * 0.95;
+    tilt.x += tilt.vx; tilt.y += tilt.vy;
+    if (tilt.x < 0){ tilt.x = 0; tilt.vx *= -0.5; }
+    if (tilt.x > W){ tilt.x = W; tilt.vx *= -0.5; }
+    if (tilt.y < 0){ tilt.y = 0; tilt.vy *= -0.5; }
+    if (tilt.y > H){ tilt.y = H; tilt.vy *= -0.5; }
+    place(ball, tilt.x, tilt.y);
+    const dx = (tilt.x + B/2) - (tilt.tx + T/2), dy = (tilt.y + B/2) - (tilt.ty + T/2);
+    if (Math.hypot(dx, dy) < (B + T) / 2){
+      tilt.score++; $('#tiltScore').textContent = tilt.score; haptic('impact','medium'); newTarget();
+    }
+    requestAnimationFrame(frame);
+  }
+  $('#tiltStart').onclick = () => {
+    if (tilt.run) return;
+    tilt.score = 0; tilt.base = null; $('#tiltScore').textContent = 0; resetTilt();
+    tg.DeviceOrientation.start({ refresh_rate: 20 }, ok => {
+      if (!ok) return toast('Gyroscoop niet beschikbaar op dit toestel');
+      if (v('8.0') && tg.lockOrientation) try{ tg.lockOrientation(); }catch(e){}
+      tilt.run = true; toast('Houd je telefoon zoals nu en kantel'); requestAnimationFrame(frame);
+    });
+  };
+  $('#tiltStop').onclick = () => {
+    tilt.run = false;
+    try{ tg.DeviceOrientation.stop(); if (tg.unlockOrientation) tg.unlockOrientation(); }catch(e){}
+    toast(`Gestopt: ${tilt.score} gevangen`);
+  };
+  if (v('8.0')) tg.onEvent('deviceOrientationChanged', onOrientation);
+})();
+</script>
+</body>
+</html>
